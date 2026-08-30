@@ -1,0 +1,395 @@
+import { useMemo, useState } from 'react';
+import { Screen } from '../ui/Screen';
+import { Button } from '../ui/Button';
+import { Banner } from '../ui/Banner';
+import { AmountInput } from '../ui/AmountInput';
+import { PhotoSheet } from '../ui/PhotoSheet';
+import { useReceiptImage } from '../hooks/useReceiptImage';
+import { useAppStore } from '../store/useAppStore';
+import { formatCents } from '../lib/money';
+import { adjustmentsTotal, subtotalOf, taxesTotalOf } from '../lib/compute';
+import { uid } from '../lib/id';
+import { regimeByCode, type Receipt, type ReceiptLine, type ReceiptTax } from '../types';
+
+type VerifyScreenProps = {
+  receipt: Receipt;
+  onBack: () => void;
+  onDone: () => void;
+};
+
+const LOW_CONFIDENCE = 70;
+
+function emptyLine(): ReceiptLine {
+  return {
+    id: uid(),
+    label: '',
+    quantity: 1,
+    unitPriceCents: 0,
+    totalCents: 0,
+    taxCodes: null,
+    assignments: [],
+    confidence: 100,
+    isManual: true,
+  };
+}
+
+export function VerifyScreen({ receipt, onBack, onDone }: VerifyScreenProps) {
+  const updateReceipt = useAppStore((s) => s.updateReceipt);
+  const [photoOpen, setPhotoOpen] = useState(false);
+  const imageUrl = useReceiptImage(receipt.imageBlobKey);
+
+  const settings = useAppStore((s) => s.settings);
+  const subtotal = useMemo(() => subtotalOf(receipt), [receipt]);
+  const taxes = taxesTotalOf(receipt.taxes);
+  const adjustments = adjustmentsTotal(receipt.adjustments);
+  const computed = subtotal + taxes + adjustments;
+  const stated = receipt.statedTotalCents;
+  const gap = stated === null ? 0 : computed - stated;
+  const subtotalGap =
+    receipt.statedSubtotalCents === null ? 0 : subtotal - receipt.statedSubtotalCents;
+
+  const patchLine = (id: string, patch: Partial<ReceiptLine>) => {
+    updateReceipt(receipt.id, (current) => ({
+      ...current,
+      lines: current.lines.map((line) => (line.id === id ? { ...line, ...patch } : line)),
+    }));
+  };
+
+  const setQuantity = (line: ReceiptLine, quantity: number) => {
+    const safe = Number.isFinite(quantity) && quantity > 0 ? Math.floor(quantity) : 1;
+    patchLine(line.id, {
+      quantity: safe,
+      totalCents: line.unitPriceCents * safe,
+      isManual: true,
+    });
+  };
+
+  const setUnitPrice = (line: ReceiptLine, unitPriceCents: number) => {
+    patchLine(line.id, {
+      unitPriceCents,
+      totalCents: unitPriceCents * line.quantity,
+      isManual: true,
+    });
+  };
+
+  const setTotal = (line: ReceiptLine, totalCents: number) => {
+    patchLine(line.id, {
+      totalCents,
+      unitPriceCents: Math.round(totalCents / Math.max(1, line.quantity)),
+      isManual: true,
+    });
+  };
+
+  const addLine = () => {
+    updateReceipt(receipt.id, (current) => ({ ...current, lines: [...current.lines, emptyLine()] }));
+  };
+
+  const removeLine = (id: string) => {
+    updateReceipt(receipt.id, (current) => ({
+      ...current,
+      lines: current.lines.filter((line) => line.id !== id),
+    }));
+  };
+
+  const patchTax = (id: string, patch: Partial<ReceiptTax>) => {
+    updateReceipt(receipt.id, (current) => ({
+      ...current,
+      taxes: current.taxes.map((tax) => (tax.id === id ? { ...tax, ...patch } : tax)),
+    }));
+  };
+
+  const removeTax = (id: string) => {
+    updateReceipt(receipt.id, (current) => ({
+      ...current,
+      taxes: current.taxes.filter((tax) => tax.id !== id),
+    }));
+  };
+
+  const addRegimeTaxes = () => {
+    const regime = regimeByCode(settings.taxRegimeCode);
+    updateReceipt(receipt.id, (current) => ({
+      ...current,
+      taxes: regime.taxes.map((tax) => ({
+        id: uid(),
+        code: tax.code,
+        label: tax.label,
+        ratePercent: tax.ratePercent,
+        amountCents: 0,
+      })),
+    }));
+  };
+
+  const absorbGap = () => {
+    if (gap === 0) return;
+    updateReceipt(receipt.id, (current) => ({
+      ...current,
+      adjustments: [
+        ...current.adjustments,
+        {
+          id: uid(),
+          label: 'Écart de saisie',
+          amountCents: -gap,
+          mode: 'proportional',
+          assignments: [],
+        },
+      ],
+    }));
+  };
+
+  return (
+    <Screen
+      title="Vérification"
+      onBack={onBack}
+      action={
+        receipt.imageBlobKey ? (
+          <button type="button" className="linkButton" onClick={() => setPhotoOpen(true)}>
+            Voir la photo
+          </button>
+        ) : null
+      }
+      banner={
+        <Banner
+          label="Contrôle du total"
+          tone={stated !== null && gap !== 0 ? 'warn' : 'neutral'}
+          action={
+            stated !== null && gap !== 0 ? (
+              <button type="button" className="linkButton" onClick={absorbGap}>
+                Ajouter en ajustement
+              </button>
+            ) : null
+          }
+        >
+          {stated === null ? (
+            <>
+              Sous-total <span className="num">{formatCents(subtotal)}</span> + taxes{' '}
+              <span className="num">{formatCents(taxes)}</span> ={' '}
+              <span className="num">{formatCents(computed)}</span>
+              {' · '}
+              <span className="muted">total du ticket non renseigné</span>
+            </>
+          ) : gap === 0 ? (
+            <>
+              Sous-total <span className="num">{formatCents(subtotal)}</span> + taxes{' '}
+              <span className="num">{formatCents(taxes)}</span> = Total du ticket{' '}
+              <span className="num">{formatCents(stated)}</span> ✓
+            </>
+          ) : receipt.statedSubtotalCents === null ? (
+            <>
+              Écart de <span className="num">{formatCents(Math.abs(gap))}</span> — vérifiez les
+              lignes{taxes !== 0 ? ' et les taxes' : ''}
+            </>
+          ) : subtotalGap !== 0 ? (
+            <>
+              Écart de <span className="num">{formatCents(Math.abs(subtotalGap))}</span> sur le
+              sous-total — vérifiez les lignes
+            </>
+          ) : (
+            <>
+              Écart de <span className="num">{formatCents(Math.abs(gap))}</span> — les lignes
+              tombent juste, vérifiez les taxes
+            </>
+          )}
+        </Banner>
+      }
+      footer={
+        <Button variant="primary" full onClick={onDone} disabled={receipt.lines.length === 0}>
+          Attribuer
+        </Button>
+      }
+    >
+      <div className="fields">
+        <label className="field">
+          <span className="field__label">Commerçant</span>
+          <input
+            type="text"
+            value={receipt.merchant ?? ''}
+            placeholder="Carrefour, boulangerie…"
+            onChange={(event) =>
+              updateReceipt(receipt.id, { merchant: event.target.value || null })
+            }
+          />
+        </label>
+        <div className="row row--gap">
+          <label className="field field--grow">
+            <span className="field__label">Date</span>
+            <input
+              type="date"
+              value={receipt.purchaseDate ?? ''}
+              onChange={(event) =>
+                updateReceipt(receipt.id, { purchaseDate: event.target.value || null })
+              }
+            />
+          </label>
+          <label className="field field--grow">
+            <span className="field__label">Sous-total lu</span>
+            <AmountInput
+              valueCents={receipt.statedSubtotalCents}
+              onChange={(cents) => updateReceipt(receipt.id, { statedSubtotalCents: cents })}
+              placeholder="—"
+              aria-label="Sous-total lu sur le ticket"
+            />
+          </label>
+          <label className="field field--grow">
+            <span className="field__label">Total lu</span>
+            <AmountInput
+              valueCents={receipt.statedTotalCents}
+              onChange={(cents) => updateReceipt(receipt.id, { statedTotalCents: cents })}
+              placeholder="—"
+              aria-label="Total lu sur le ticket"
+            />
+          </label>
+        </div>
+      </div>
+
+      <ul className="lines">
+        {receipt.lines.map((line) => (
+          <li key={line.id} className="lineRow">
+            <div className="lineRow__top">
+              {line.confidence < LOW_CONFIDENCE && !line.isManual ? (
+                <span
+                  className="dot"
+                  title={`Lecture peu sûre (${line.confidence} %)`}
+                  aria-label="Lecture peu sûre"
+                />
+              ) : (
+                <span className="dot dot--empty" aria-hidden="true" />
+              )}
+              <input
+                type="text"
+                className="lineRow__label"
+                value={line.label}
+                placeholder="Libellé"
+                aria-label="Libellé de la ligne"
+                onChange={(event) => patchLine(line.id, { label: event.target.value })}
+              />
+              <button
+                type="button"
+                className="iconButton iconButton--quiet"
+                aria-label={`Supprimer ${line.label || 'la ligne'}`}
+                onClick={() => removeLine(line.id)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="lineRow__bottom">
+              <input
+                type="number"
+                min={1}
+                max={999}
+                className="lineRow__qty num"
+                value={line.quantity}
+                aria-label="Quantité"
+                onChange={(event) => setQuantity(line, Number(event.target.value))}
+              />
+              <span className="lineRow__times" aria-hidden="true">×</span>
+              <AmountInput
+                valueCents={line.unitPriceCents}
+                onChange={(cents) => setUnitPrice(line, cents ?? 0)}
+                aria-label="Prix unitaire"
+                className="lineRow__unit"
+              />
+              <label className="lineRow__taxable">
+                <input
+                  type="checkbox"
+                  checked={line.taxCodes === null || line.taxCodes.length > 0}
+                  aria-label={`${line.label || 'Ligne'} : soumise aux taxes`}
+                  onChange={(event) =>
+                    patchLine(line.id, { taxCodes: event.target.checked ? null : [] })
+                  }
+                />
+                <span>Tx</span>
+              </label>
+              <AmountInput
+                valueCents={line.totalCents}
+                onChange={(cents) => setTotal(line, cents ?? 0)}
+                aria-label="Total de la ligne"
+                className="lineRow__total"
+              />
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      <button type="button" className="linkButton linkButton--center" onClick={addLine}>
+        + Ajouter une ligne
+      </button>
+
+      <div className="stack">
+        <div className="row row--between">
+          <h2>Taxes</h2>
+          {receipt.taxes.length === 0 ? (
+            <button type="button" className="linkButton" onClick={addRegimeTaxes}>
+              + {regimeByCode(settings.taxRegimeCode).label}
+            </button>
+          ) : (
+            <span className="num muted">{formatCents(taxes)}</span>
+          )}
+        </div>
+        {receipt.taxes.length === 0 ? (
+          <p className="muted">
+            Aucune taxe lue sur ce ticket. Ajoutez-les si elles y figurent : les prix des
+            lignes sont hors taxes.
+          </p>
+        ) : (
+          <ul className="lines">
+            {receipt.taxes.map((tax) => (
+              <li key={tax.id} className="lineRow lineRow--compact">
+                <input
+                  type="text"
+                  className="grow"
+                  value={tax.label}
+                  aria-label="Nom de la taxe"
+                  onChange={(event) => patchTax(tax.id, { label: event.target.value })}
+                />
+                <AmountInput
+                  valueCents={tax.amountCents}
+                  onChange={(cents) => patchTax(tax.id, { amountCents: cents ?? 0 })}
+                  allowNegative
+                  aria-label={`Montant de ${tax.label}`}
+                  className="lineRow__total"
+                />
+                <button
+                  type="button"
+                  className="iconButton iconButton--quiet"
+                  aria-label={`Supprimer ${tax.label}`}
+                  onClick={() => removeTax(tax.id)}
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {receipt.adjustments.length > 0 ? (
+        <div className="stack">
+          <h2>Ajustements</h2>
+          <ul className="lines">
+            {receipt.adjustments.map((adjustment) => (
+              <li key={adjustment.id} className="lineRow lineRow--compact">
+                <span>{adjustment.label}</span>
+                <span className="num">{formatCents(adjustment.amountCents)}</span>
+                <button
+                  type="button"
+                  className="iconButton iconButton--quiet"
+                  aria-label={`Supprimer ${adjustment.label}`}
+                  onClick={() =>
+                    updateReceipt(receipt.id, (current) => ({
+                      ...current,
+                      adjustments: current.adjustments.filter((a) => a.id !== adjustment.id),
+                    }))
+                  }
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <PhotoSheet open={photoOpen} src={imageUrl} onClose={() => setPhotoOpen(false)} />
+    </Screen>
+  );
+}

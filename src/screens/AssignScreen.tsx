@@ -1,0 +1,516 @@
+import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { Screen } from '../ui/Screen';
+import { Button } from '../ui/Button';
+import { Banner } from '../ui/Banner';
+import { Sheet } from '../ui/Sheet';
+import { AmountInput } from '../ui/AmountInput';
+import { PersonPill } from '../ui/PersonPill';
+import { useAppStore } from '../store/useAppStore';
+import { formatCents } from '../lib/money';
+import { splitCents } from '../lib/split';
+import { uid } from '../lib/id';
+import { personById } from '../lib/people';
+import { useLongPress } from '../hooks/useLongPress';
+import type { Adjustment, Assignment, Receipt, ReceiptLine } from '../types';
+
+type AssignScreenProps = {
+  receipt: Receipt;
+  onBack: () => void;
+  onDone: () => void;
+};
+
+function sameAssignment(line: ReceiptLine, ids: readonly string[]): boolean {
+  if (line.assignments.length !== ids.length) return false;
+  const assigned = new Set(line.assignments.map((a) => a.personId));
+  return ids.every((id) => assigned.has(id)) && line.assignments.every((a) => a.shares === 1);
+}
+
+export function AssignScreen({ receipt, onBack, onDone }: AssignScreenProps) {
+  const people = useAppStore((s) => s.people);
+  const addPerson = useAppStore((s) => s.addPerson);
+  const updateReceipt = useAppStore((s) => s.updateReceipt);
+
+  const [selected, setSelected] = useState<string[]>(() => people.map((p) => p.id).slice(0, 1));
+  const [sharesFor, setSharesFor] = useState<string | null>(null);
+  const [addingPerson, setAddingPerson] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [adjustmentOpen, setAdjustmentOpen] = useState(false);
+  const [confirmUnassigned, setConfirmUnassigned] = useState(false);
+  const rowRefs = useRef(new Map<string, HTMLLIElement>());
+
+  const unassigned = useMemo(
+    () => receipt.lines.filter((line) => line.assignments.length === 0),
+    [receipt.lines],
+  );
+
+  const toggleSelected = (id: string) =>
+    setSelected((current) =>
+      current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
+    );
+
+  const applyToLine = (line: ReceiptLine) => {
+    if (selected.length === 0) return;
+    const assignments: Assignment[] = sameAssignment(line, selected)
+      ? []
+      : selected.map((personId) => ({ personId, shares: 1 }));
+    updateReceipt(receipt.id, (current) => ({
+      ...current,
+      lines: current.lines.map((item) => (item.id === line.id ? { ...item, assignments } : item)),
+    }));
+  };
+
+  const setAssignments = (lineId: string, assignments: Assignment[]) => {
+    updateReceipt(receipt.id, (current) => ({
+      ...current,
+      lines: current.lines.map((item) => (item.id === lineId ? { ...item, assignments } : item)),
+    }));
+  };
+
+  const assignAll = (assignments: Assignment[]) => {
+    updateReceipt(receipt.id, (current) => ({
+      ...current,
+      lines: current.lines.map((line) => ({ ...line, assignments: [...assignments] })),
+    }));
+  };
+
+  const scrollToFirstUnassigned = () => {
+    const first = unassigned[0];
+    if (!first) return;
+    rowRefs.current.get(first.id)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  };
+
+  const sharesLine = receipt.lines.find((line) => line.id === sharesFor) ?? null;
+
+  return (
+    <Screen
+      title="Attribution"
+      onBack={onBack}
+      banner={
+        unassigned.length > 0 ? (
+          <Banner
+            label="Lignes non attribuées"
+            tone="warn"
+            action={
+              <button type="button" className="linkButton" onClick={scrollToFirstUnassigned}>
+                Voir
+              </button>
+            }
+          >
+            {unassigned.length} ligne{unassigned.length > 1 ? 's' : ''} non attribuée
+            {unassigned.length > 1 ? 's' : ''}
+          </Banner>
+        ) : null
+      }
+      footer={
+        <Button
+          variant="primary"
+          full
+          onClick={() => (unassigned.length > 0 ? setConfirmUnassigned(true) : onDone())}
+        >
+          Voir les résultats
+        </Button>
+      }
+    >
+      <div className="brush">
+        <div className="brush__pills">
+          {people.map((person) => (
+            <PersonPill
+              key={person.id}
+              person={person}
+              selected={selected.includes(person.id)}
+              onClick={() => toggleSelected(person.id)}
+            />
+          ))}
+          <button
+            type="button"
+            className="pill pill--add"
+            aria-label="Ajouter un participant"
+            onClick={() => setAddingPerson(true)}
+          >
+            +
+          </button>
+        </div>
+        <p className="brush__hint">
+          {selected.length === 0
+            ? 'Sélectionnez au moins une personne, puis touchez les lignes.'
+            : selected.length === 1
+              ? 'Touchez les lignes à attribuer. Appui long : régler les parts.'
+              : `Touchez les lignes à partager entre ${selected.length} personnes.`}
+        </p>
+        <div className="brush__actions">
+          <button
+            type="button"
+            className="linkButton"
+            disabled={selected.length === 0}
+            onClick={() => assignAll(selected.map((personId) => ({ personId, shares: 1 })))}
+          >
+            Tout attribuer à la sélection
+          </button>
+          <button
+            type="button"
+            className="linkButton"
+            disabled={people.length === 0}
+            onClick={() => assignAll(people.map((person) => ({ personId: person.id, shares: 1 })))}
+          >
+            Tout partager entre tous
+          </button>
+          <button
+            type="button"
+            className="linkButton"
+            onClick={() =>
+              setSelected(people.filter((p) => !selected.includes(p.id)).map((p) => p.id))
+            }
+          >
+            Inverser la sélection
+          </button>
+        </div>
+      </div>
+
+      <ul className="lines">
+        {receipt.lines.map((line) => {
+          const assigned = line.assignments
+            .map((assignment) => personById(people, assignment.personId))
+            .filter((person): person is NonNullable<typeof person> => Boolean(person));
+          return (
+            <li
+              key={line.id}
+              className={`assignRow${line.assignments.length === 0 ? ' assignRow--none' : ''}`}
+              ref={(node) => {
+                if (node) rowRefs.current.set(line.id, node);
+                else rowRefs.current.delete(line.id);
+              }}
+            >
+              <AssignRowButton
+                line={line}
+                onApply={() => applyToLine(line)}
+                onEditShares={() => setSharesFor(line.id)}
+              >
+                <span className="assignRow__label">
+                  {line.label || 'Sans libellé'}
+                  {line.quantity > 1 ? <span className="muted"> ×{line.quantity}</span> : null}
+                </span>
+                <span className="assignRow__pills">
+                  {assigned.map((person) => (
+                    <PersonPill key={person.id} person={person} size="sm" />
+                  ))}
+                </span>
+                <span className="assignRow__amount num">{formatCents(line.totalCents)}</span>
+              </AssignRowButton>
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className="stack">
+        <div className="row row--between">
+          <h2>Ajustements</h2>
+          <button type="button" className="linkButton" onClick={() => setAdjustmentOpen(true)}>
+            + Ajouter
+          </button>
+        </div>
+        {receipt.adjustments.length === 0 ? (
+          <p className="muted">Remise, sac, arrondi de caisse… rien pour l’instant.</p>
+        ) : (
+          <ul className="lines">
+            {receipt.adjustments.map((adjustment) => (
+              <li key={adjustment.id} className="lineRow lineRow--compact">
+                <span>
+                  {adjustment.label}
+                  <span className="muted">
+                    {' · '}
+                    {adjustment.mode === 'proportional' ? 'au prorata' : 'attribué'}
+                  </span>
+                </span>
+                <span className="num">{formatCents(adjustment.amountCents)}</span>
+                <button
+                  type="button"
+                  className="iconButton iconButton--quiet"
+                  aria-label={`Supprimer ${adjustment.label}`}
+                  onClick={() =>
+                    updateReceipt(receipt.id, (current) => ({
+                      ...current,
+                      adjustments: current.adjustments.filter((a) => a.id !== adjustment.id),
+                    }))
+                  }
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <SharesSheet
+        line={sharesLine}
+        onClose={() => setSharesFor(null)}
+        onChange={(assignments) => {
+          if (sharesLine) setAssignments(sharesLine.id, assignments);
+        }}
+      />
+
+      <AdjustmentSheet
+        open={adjustmentOpen}
+        onClose={() => setAdjustmentOpen(false)}
+        onCreate={(adjustment) => {
+          updateReceipt(receipt.id, (current) => ({
+            ...current,
+            adjustments: [...current.adjustments, adjustment],
+          }));
+          setAdjustmentOpen(false);
+        }}
+      />
+
+      <Sheet
+        open={addingPerson}
+        title="Nouveau participant"
+        onClose={() => setAddingPerson(false)}
+        footer={
+          <Button
+            variant="primary"
+            full
+            onClick={() => {
+              void addPerson(newName).then((person) => {
+                if (person) setSelected((current) => [...current, person.id]);
+              });
+              setNewName('');
+              setAddingPerson(false);
+            }}
+          >
+            Ajouter
+          </Button>
+        }
+      >
+        <label className="field">
+          <span className="field__label">Prénom</span>
+          <input
+            type="text"
+            value={newName}
+            autoFocus
+            onChange={(event) => setNewName(event.target.value)}
+          />
+        </label>
+      </Sheet>
+
+      <Sheet
+        open={confirmUnassigned}
+        title="Lignes non attribuées"
+        onClose={() => setConfirmUnassigned(false)}
+        footer={
+          <div className="row row--gap">
+            <Button full onClick={() => setConfirmUnassigned(false)}>
+              Revenir
+            </Button>
+            <Button variant="primary" full onClick={onDone}>
+              Continuer quand même
+            </Button>
+          </div>
+        }
+      >
+        <p className="muted">
+          {unassigned.length} ligne{unassigned.length > 1 ? 's' : ''} ne
+          {unassigned.length > 1 ? ' sont' : ' est'} attribuée
+          {unassigned.length > 1 ? 's' : ''} à personne. Leur montant ne sera compté dans
+          aucun solde, et le total réparti sera inférieur au total du ticket.
+        </p>
+      </Sheet>
+    </Screen>
+  );
+}
+
+type AssignRowButtonProps = {
+  line: ReceiptLine;
+  onApply: () => void;
+  onEditShares: () => void;
+  children: ReactNode;
+};
+
+function AssignRowButton({ onApply, onEditShares, children }: AssignRowButtonProps) {
+  const press = useLongPress({ onLongPress: onEditShares, onClick: onApply });
+  return (
+    <button type="button" className="assignRow__hit" {...press}>
+      {children}
+    </button>
+  );
+}
+
+type SharesSheetProps = {
+  line: ReceiptLine | null;
+  onClose: () => void;
+  onChange: (assignments: Assignment[]) => void;
+};
+
+function SharesSheet({ line, onClose, onChange }: SharesSheetProps) {
+  const people = useAppStore((s) => s.people);
+  if (!line) return null;
+
+  const assignments = line.assignments;
+  const weights = assignments.map((assignment) => assignment.shares);
+  const preview = splitCents(line.totalCents, weights);
+  const totalShares = weights.reduce((sum, value) => sum + value, 0);
+
+  return (
+    <Sheet
+      open
+      title={line.label || 'Ligne'}
+      onClose={onClose}
+      footer={
+        <Button variant="primary" full onClick={onClose}>
+          Terminé
+        </Button>
+      }
+    >
+      <p className="muted">
+        Montant de la ligne : <span className="num">{formatCents(line.totalCents)}</span>
+      </p>
+      <ul className="shares">
+        {people.map((person) => {
+          const index = assignments.findIndex((a) => a.personId === person.id);
+          const assignment = index >= 0 ? assignments[index] : null;
+          return (
+            <li key={person.id} className="shares__row">
+              <input
+                type="checkbox"
+                checked={assignment !== null}
+                aria-label={`Inclure ${person.name}`}
+                onChange={(event) =>
+                  onChange(
+                    event.target.checked
+                      ? [...assignments, { personId: person.id, shares: 1 }]
+                      : assignments.filter((a) => a.personId !== person.id),
+                  )
+                }
+              />
+              <span className="shares__name">{person.name}</span>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                className="shares__value num"
+                value={assignment?.shares ?? 0}
+                disabled={assignment === null}
+                aria-label={`Parts de ${person.name}`}
+                onChange={(event) => {
+                  const shares = Math.max(0, Number(event.target.value) || 0);
+                  onChange(
+                    assignments.map((a) => (a.personId === person.id ? { ...a, shares } : a)),
+                  );
+                }}
+              />
+              <span className="shares__amount num">
+                {index >= 0 ? formatCents(preview[index] as number) : '—'}
+              </span>
+              <span className="shares__percent muted num">
+                {index >= 0 && totalShares > 0
+                  ? `${Math.round(((assignment?.shares ?? 0) / totalShares) * 100)} %`
+                  : ''}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </Sheet>
+  );
+}
+
+type AdjustmentSheetProps = {
+  open: boolean;
+  onClose: () => void;
+  onCreate: (adjustment: Adjustment) => void;
+};
+
+function AdjustmentSheet({ open, onClose, onCreate }: AdjustmentSheetProps) {
+  const people = useAppStore((s) => s.people);
+  const [label, setLabel] = useState('');
+  const [amount, setAmount] = useState(0);
+  const [negative, setNegative] = useState(true);
+  const [mode, setMode] = useState<Adjustment['mode']>('proportional');
+  const [targets, setTargets] = useState<string[]>([]);
+
+  if (!open) return null;
+
+  const create = () => {
+    const signed = negative ? -Math.abs(amount) : Math.abs(amount);
+    onCreate({
+      id: uid(),
+      label: label.trim() || (negative ? 'Remise' : 'Supplément'),
+      amountCents: signed,
+      mode,
+      assignments: mode === 'assigned' ? targets.map((id) => ({ personId: id, shares: 1 })) : [],
+    });
+    setLabel('');
+    setAmount(0);
+    setTargets([]);
+  };
+
+  return (
+    <Sheet
+      open
+      title="Ajustement"
+      onClose={onClose}
+      footer={
+        <Button variant="primary" full disabled={amount === 0} onClick={create}>
+          Ajouter
+        </Button>
+      }
+    >
+      <label className="field">
+        <span className="field__label">Libellé</span>
+        <input
+          type="text"
+          value={label}
+          placeholder="Remise fidélité, sac, arrondi caisse…"
+          onChange={(event) => setLabel(event.target.value)}
+        />
+      </label>
+      <div className="row row--gap">
+        <label className="field field--grow">
+          <span className="field__label">Montant</span>
+          <AmountInput
+            valueCents={amount}
+            onChange={(cents) => setAmount(cents ?? 0)}
+            aria-label="Montant"
+          />
+        </label>
+        <label className="field field--grow">
+          <span className="field__label">Sens</span>
+          <select
+            value={negative ? 'remise' : 'supplement'}
+            onChange={(event) => setNegative(event.target.value === 'remise')}
+          >
+            <option value="remise">Remise (−)</option>
+            <option value="supplement">Supplément (+)</option>
+          </select>
+        </label>
+      </div>
+      <label className="field">
+        <span className="field__label">Répartition</span>
+        <select value={mode} onChange={(event) => setMode(event.target.value as Adjustment['mode'])}>
+          <option value="proportional">Au prorata de ce que chacun doit</option>
+          <option value="assigned">Attribué à…</option>
+        </select>
+      </label>
+      {mode === 'assigned' ? (
+        <ul className="shares">
+          {people.map((person) => (
+            <li key={person.id} className="shares__row">
+              <input
+                type="checkbox"
+                checked={targets.includes(person.id)}
+                aria-label={`Attribuer à ${person.name}`}
+                onChange={(event) =>
+                  setTargets((current) =>
+                    event.target.checked
+                      ? [...current, person.id]
+                      : current.filter((id) => id !== person.id),
+                  )
+                }
+              />
+              <span className="shares__name">{person.name}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </Sheet>
+  );
+}
