@@ -8,12 +8,14 @@
   --accent-ink: #fafaf9;
   --warn: #b45309;
 
-  --person-1: #8b8b86;
-  --person-2: #a89f91;
-  --person-3: #8f9a8e;
-  --person-4: #9a8f95;
-  --person-5: #8a939c;
-  --person-6: #a09a86;
+  /* Six teintes bien séparées, assez foncées pour porter du texte clair.
+     Le mode sombre les réclaire plus bas : le texte posé dessus est alors sombre. */
+  --person-1: #2563eb;
+  --person-2: #c2410c;
+  --person-3: #15803d;
+  --person-4: #be185d;
+  --person-5: #0e7490;
+  --person-6: #7c3aed;
 
   --text-xs: 13px;
   --text-sm: 15px;
@@ -52,6 +54,13 @@
     --accent: #f0efec;
     --accent-ink: #121211;
     --warn: #d99a3f;
+
+    --person-1: #8ab4ff;
+    --person-2: #fdb173;
+    --person-3: #7ddba0;
+    --person-4: #f7a3c8;
+    --person-5: #6fd7ea;
+    --person-6: #c3b0fd;
   }
 }
 
@@ -64,4 +73,11 @@
   --accent: #f0efec;
   --accent-ink: #121211;
   --warn: #d99a3f;
+
+  --person-1: #8ab4ff;
+  --person-2: #fdb173;
+  --person-3: #7ddba0;
+  --person-4: #f7a3c8;
+  --person-5: #6fd7ea;
+  --person-6: #c3b0fd;
 }

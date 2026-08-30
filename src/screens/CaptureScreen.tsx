@@ -3,7 +3,7 @@ import { Screen } from '../ui/Screen';
 import { Button } from '../ui/Button';
 import { CropBox } from '../ui/CropBox';
 import { FULL_CROP, normalizeCapture, rotateImage, type CropRect, type Rotation } from '../capture/image';
-import { putImage } from '../db';
+import { getImage, putImage } from '../db';
 import { uid } from '../lib/id';
 import { useAppStore } from '../store/useAppStore';
 import type { Receipt } from '../types';
@@ -12,9 +12,11 @@ type CaptureScreenProps = {
   receipt: Receipt;
   onBack: () => void;
   onDone: () => void;
+  /** Repartir vers la vérification sans relancer la lecture, quand elle a déjà eu lieu. */
+  onSkip?: (() => void) | undefined;
 };
 
-export function CaptureScreen({ receipt, onBack, onDone }: CaptureScreenProps) {
+export function CaptureScreen({ receipt, onBack, onDone, onSkip }: CaptureScreenProps) {
   const updateReceipt = useAppStore((s) => s.updateReceipt);
   const [original, setOriginal] = useState<Blob | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -23,7 +25,27 @@ export function CaptureScreen({ receipt, onBack, onDone }: CaptureScreenProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [restored, setRestored] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const userPicked = useRef(false);
+
+  /* Le ticket garde sa photo en base : en revenant sur cet écran, on la remet
+     sous les yeux plutôt que de présenter une zone de dépôt vide. */
+  const storedKey = receipt.imageBlobKey;
+  useEffect(() => {
+    if (!storedKey) return undefined;
+    let cancelled = false;
+    void (async () => {
+      const blob = await getImage(storedKey);
+      // Une photo choisie entre-temps prime sur celle qui dormait en base.
+      if (cancelled || !blob || userPicked.current) return;
+      setOriginal(blob);
+      setRestored(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [storedKey]);
 
   useEffect(() => {
     let revoked: string | null = null;
@@ -52,6 +74,8 @@ export function CaptureScreen({ receipt, onBack, onDone }: CaptureScreenProps) {
       return;
     }
     setError(null);
+    userPicked.current = true;
+    setRestored(false);
     setOriginal(file);
     setRotation(0);
     setCrop(FULL_CROP);
@@ -83,8 +107,13 @@ export function CaptureScreen({ receipt, onBack, onDone }: CaptureScreenProps) {
         preview ? (
           <>
             <Button variant="primary" full disabled={busy} onClick={() => void confirm()}>
-              {busy ? 'Préparation…' : 'Lire le ticket'}
+              {busy ? 'Préparation…' : restored ? 'Relire le ticket' : 'Lire le ticket'}
             </Button>
+            {onSkip ? (
+              <button type="button" className="linkButton linkButton--center" onClick={onSkip}>
+                Garder la lecture actuelle
+              </button>
+            ) : null}
             <button
               type="button"
               className="linkButton linkButton--center"
@@ -142,6 +171,12 @@ export function CaptureScreen({ receipt, onBack, onDone }: CaptureScreenProps) {
       )}
 
       {error ? <p className="warnText">{error}</p> : null}
+
+      {restored ? (
+        <p className="muted">
+          Photo déjà enregistrée pour ce ticket. Recadrez-la et relisez-la, ou reprenez-en une.
+        </p>
+      ) : null}
 
       <ul className="tips">
         <li>Ticket à plat, entier dans le cadre : une ligne coupée est une ligne perdue.</li>

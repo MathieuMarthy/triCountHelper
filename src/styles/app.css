@@ -652,41 +652,60 @@ input::placeholder {
 }
 
 .pill {
+  /* Repli pour les pastilles sans personne derrière (le bouton « + »). */
+  --pill-color: var(--ink-muted);
   flex: none;
   width: var(--touch);
   height: var(--touch);
   border-radius: 50%;
   display: grid;
   place-items: center;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--ink-muted);
+  /* Non sélectionnée : la teinte reste lisible en contour et en texte. */
+  border: 2px solid var(--pill-color);
+  background: color-mix(in srgb, var(--pill-color) 14%, var(--surface));
+  color: var(--pill-color);
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   padding: 0;
-  transition: opacity var(--motion) var(--ease);
+  transition:
+    background var(--motion) var(--ease),
+    box-shadow var(--motion) var(--ease),
+    opacity var(--motion) var(--ease);
 }
 
 .pill--sm {
   width: 26px;
   height: 26px;
   font-size: 11px;
+  border-width: 1px;
 }
 
-.pill--on {
-  background: var(--pill-color);
-  border-color: var(--pill-color);
-  color: var(--surface);
-}
-
+/* Sélectionnée, ou simple badge de lecture : la teinte est pleine. */
+.pill--on,
 .pill--sm {
   background: var(--pill-color);
   border-color: var(--pill-color);
   color: var(--surface);
 }
 
-.pill--add {
+.pill--on {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--pill-color);
+}
+
+/* Répartition par défaut : la personne n'a pas été désignée à la main. */
+.pill--ghost {
+  background: none;
   border-style: dashed;
+  border-width: 1px;
+  color: var(--pill-color);
+  opacity: 0.75;
+}
+
+.pill--add {
+  border: 1px dashed var(--line);
+  background: var(--surface);
+  color: var(--ink-muted);
   font-size: var(--text-md);
   font-weight: 400;
 }
@@ -842,6 +861,42 @@ input::placeholder {
   display: flex;
   justify-content: space-between;
   gap: var(--space-4);
+}
+
+.results__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.results__shareCount {
+  flex: none;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.results__count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.shareIcon {
+  flex: none;
+  display: inline-flex;
+  width: 13px;
+  height: 13px;
+  color: var(--ink-muted);
+}
+
+.shareIcon--shared {
+  color: var(--ink);
+}
+
+/* Réserve la même gouttière aux lignes qui n'en ont pas (taxes, pourboire). */
+.shareIcon--none {
+  visibility: hidden;
 }
 
 .results__total {

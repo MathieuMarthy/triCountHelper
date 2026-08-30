@@ -1,6 +1,14 @@
 import { splitCents } from './split';
 import { sumCents } from './money';
-import type { Adjustment, Person, Receipt, ReceiptLine, ReceiptTax, TipBasis } from '../types';
+import type {
+  Adjustment,
+  Assignment,
+  Person,
+  Receipt,
+  ReceiptLine,
+  ReceiptTax,
+  TipBasis,
+} from '../types';
 
 export type PersonShareItem = {
   kind: 'line' | 'tax' | 'adjustment' | 'tip';
@@ -8,6 +16,10 @@ export type PersonShareItem = {
   label: string;
   totalCents: number;
   amountCents: number;
+  /** Nombre de personnes qui se partagent cette part (1 = seule). */
+  shareCount: number;
+  /** Vrai quand la ligne n'a été attribuée à personne et suit la répartition par défaut. */
+  auto: boolean;
 };
 
 export type PersonTotals = {
@@ -18,6 +30,10 @@ export type PersonTotals = {
   tipCents: number;
   totalCents: number;
   lineCount: number;
+  /** Lignes que la personne assume seule. */
+  soloLineCount: number;
+  /** Lignes partagées avec au moins une autre personne. */
+  sharedLineCount: number;
   ratio: number;
   items: PersonShareItem[];
 };
@@ -37,6 +53,9 @@ export type Settlement = {
   assignedSubtotalCents: number;
   unassignedLinesCents: number;
   unassignedLineIds: string[];
+  /** Lignes sans attribution explicite, réparties d'office entre tous les participants. */
+  autoSplitLineIds: string[];
+  autoSplitLinesCents: number;
   taxes: TaxBreakdown[];
   taxesTotalCents: number;
   adjustmentsTotalCents: number;
@@ -106,39 +125,59 @@ export function settle(input: SettleInput, people: readonly Person[]): Settlemen
   const adjustments = new Array<number>(count).fill(0);
   const tips = new Array<number>(count).fill(0);
   const lineCounts = new Array<number>(count).fill(0);
+  const soloLineCounts = new Array<number>(count).fill(0);
+  const sharedLineCounts = new Array<number>(count).fill(0);
   const items: PersonShareItem[][] = people.map(() => []);
 
   const taxBase = new Map<string, number[]>();
   for (const tax of input.taxes) taxBase.set(tax.code, new Array<number>(count).fill(0));
 
   const unassignedLineIds: string[] = [];
+  const autoSplitLineIds: string[] = [];
   let assignedSubtotalCents = 0;
+  let autoSplitLinesCents = 0;
+
+  /* Une ligne que personne n'a réclamée revient à tout le monde, à parts égales.
+     Sans participant, il n'y a personne à qui la donner : elle reste hors répartition. */
+  const everyone: Assignment[] = people.map((person) => ({ personId: person.id, shares: 1 }));
 
   for (const line of input.lines) {
-    const targets = isAssigned(line)
+    const explicit = isAssigned(line)
       ? line.assignments.filter((a) => index.has(a.personId) && a.shares > 0)
       : [];
+    const auto = explicit.length === 0;
+    const targets = auto ? everyone : explicit;
+
     if (targets.length === 0) {
       unassignedLineIds.push(line.id);
       continue;
+    }
+    if (auto) {
+      autoSplitLineIds.push(line.id);
+      autoSplitLinesCents += line.totalCents;
     }
     assignedSubtotalCents += line.totalCents;
 
     const tieBreak = targets.map((a) => index.get(a.personId) as number);
     const weights = targets.map((a) => a.shares);
     const parts = splitCents(line.totalCents, weights, { tieBreak });
+    const shareCount = targets.length;
 
     targets.forEach((assignment, i) => {
       const p = index.get(assignment.personId) as number;
       const amount = parts[i] as number;
       lines[p] = (lines[p] as number) + amount;
       lineCounts[p] = (lineCounts[p] as number) + 1;
+      if (shareCount > 1) sharedLineCounts[p] = (sharedLineCounts[p] as number) + 1;
+      else soloLineCounts[p] = (soloLineCounts[p] as number) + 1;
       (items[p] as PersonShareItem[]).push({
         kind: 'line',
         id: line.id,
         label: line.label,
         totalCents: line.totalCents,
         amountCents: amount,
+        shareCount,
+        auto,
       });
 
       for (const tax of input.taxes) {
@@ -176,6 +215,8 @@ export function settle(input: SettleInput, people: readonly Person[]): Settlemen
         label: tax.label,
         totalCents: tax.amountCents,
         amountCents: amount,
+        shareCount: 0,
+        auto: false,
       });
     });
   }
@@ -216,6 +257,8 @@ export function settle(input: SettleInput, people: readonly Person[]): Settlemen
         label: adjustment.label,
         totalCents: adjustment.amountCents,
         amountCents: amount,
+        shareCount: 0,
+        auto: false,
       });
     });
   }
@@ -240,6 +283,8 @@ export function settle(input: SettleInput, people: readonly Person[]): Settlemen
           label: 'Pourboire',
           totalCents: tipCents,
           amountCents: amount,
+          shareCount: 0,
+          auto: false,
         });
       });
     }
@@ -268,6 +313,8 @@ export function settle(input: SettleInput, people: readonly Person[]): Settlemen
       tipCents: tips[i] as number,
       totalCents: totals[i] as number,
       lineCount: lineCounts[i] as number,
+      soloLineCount: soloLineCounts[i] as number,
+      sharedLineCount: sharedLineCounts[i] as number,
       ratio: distributedTotalCents === 0 ? 0 : (totals[i] as number) / distributedTotalCents,
       items: items[i] as PersonShareItem[],
     })),
@@ -275,6 +322,8 @@ export function settle(input: SettleInput, people: readonly Person[]): Settlemen
     assignedSubtotalCents,
     unassignedLinesCents: subtotalCents - assignedSubtotalCents,
     unassignedLineIds,
+    autoSplitLineIds,
+    autoSplitLinesCents,
     taxes: breakdown,
     taxesTotalCents,
     adjustmentsTotalCents,

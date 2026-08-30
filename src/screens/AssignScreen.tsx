@@ -89,7 +89,7 @@ export function AssignScreen({ receipt, onBack, onDone }: AssignScreenProps) {
         unassigned.length > 0 ? (
           <Banner
             label="Lignes non attribuées"
-            tone="warn"
+            tone={people.length === 0 ? 'warn' : 'neutral'}
             action={
               <button type="button" className="linkButton" onClick={scrollToFirstUnassigned}>
                 Voir
@@ -98,6 +98,9 @@ export function AssignScreen({ receipt, onBack, onDone }: AssignScreenProps) {
           >
             {unassigned.length} ligne{unassigned.length > 1 ? 's' : ''} non attribuée
             {unassigned.length > 1 ? 's' : ''}
+            {people.length === 0
+              ? ' — ajoutez un participant, sinon elles resteront hors répartition'
+              : ` — partagée${unassigned.length > 1 ? 's' : ''} entre les ${people.length} participants`}
           </Banner>
         ) : null
       }
@@ -105,7 +108,9 @@ export function AssignScreen({ receipt, onBack, onDone }: AssignScreenProps) {
         <Button
           variant="primary"
           full
-          onClick={() => (unassigned.length > 0 ? setConfirmUnassigned(true) : onDone())}
+          onClick={() =>
+            unassigned.length > 0 && people.length === 0 ? setConfirmUnassigned(true) : onDone()
+          }
         >
           Voir les résultats
         </Button>
@@ -136,6 +141,9 @@ export function AssignScreen({ receipt, onBack, onDone }: AssignScreenProps) {
             : selected.length === 1
               ? 'Touchez les lignes à attribuer. Appui long : régler les parts.'
               : `Touchez les lignes à partager entre ${selected.length} personnes.`}
+          {people.length > 0
+            ? ' Une ligne laissée sans attribution est partagée entre tout le monde.'
+            : ''}
         </p>
         <div className="brush__actions">
           <button
@@ -190,8 +198,13 @@ export function AssignScreen({ receipt, onBack, onDone }: AssignScreenProps) {
                   {line.quantity > 1 ? <span className="muted"> ×{line.quantity}</span> : null}
                 </span>
                 <span className="assignRow__pills">
-                  {assigned.map((person) => (
-                    <PersonPill key={person.id} person={person} size="sm" />
+                  {(line.assignments.length === 0 ? people : assigned).map((person) => (
+                    <PersonPill
+                      key={person.id}
+                      person={person}
+                      size="sm"
+                      ghost={line.assignments.length === 0}
+                    />
                   ))}
                 </span>
                 <span className="assignRow__amount num">{formatCents(line.totalCents)}</span>
@@ -310,8 +323,9 @@ export function AssignScreen({ receipt, onBack, onDone }: AssignScreenProps) {
         <p className="muted">
           {unassigned.length} ligne{unassigned.length > 1 ? 's' : ''} ne
           {unassigned.length > 1 ? ' sont' : ' est'} attribuée
-          {unassigned.length > 1 ? 's' : ''} à personne. Leur montant ne sera compté dans
-          aucun solde, et le total réparti sera inférieur au total du ticket.
+          {unassigned.length > 1 ? 's' : ''} à personne, et aucun participant n’est là pour
+          les reprendre. Leur montant ne sera compté dans aucun solde, et le total réparti
+          sera inférieur au total du ticket.
         </p>
       </Sheet>
     </Screen>

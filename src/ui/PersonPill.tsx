@@ -6,6 +6,8 @@ import type { Person } from '../types';
 type PersonPillProps = {
   person: Person;
   selected?: boolean;
+  /** Répartition par défaut : la personne n'a pas été désignée à la main. */
+  ghost?: boolean;
   size?: 'sm' | 'md';
   onClick?: () => void;
   onLongPress?: () => void;
@@ -15,6 +17,7 @@ type PersonPillProps = {
 export function PersonPill({
   person,
   selected = false,
+  ghost = false,
   size = 'md',
   onClick,
   onLongPress,
@@ -22,6 +25,7 @@ export function PersonPill({
 }: PersonPillProps) {
   const press = useLongPress({ onLongPress: onLongPress ?? (() => undefined), onClick });
   const style = { '--pill-color': person.color ?? 'var(--person-1)' } as CSSProperties;
+  const tone = ghost ? ' pill--ghost' : '';
   const content = (
     <>
       <span className="pill__initials" aria-hidden="true">
@@ -33,7 +37,7 @@ export function PersonPill({
 
   if (!onClick && !onLongPress) {
     return (
-      <span className={`pill pill--${size}`} style={style} title={title ?? person.name}>
+      <span className={`pill pill--${size}${tone}`} style={style} title={title ?? person.name}>
         {content}
       </span>
     );
@@ -42,7 +46,7 @@ export function PersonPill({
   return (
     <button
       type="button"
-      className={`pill pill--${size}${selected ? ' pill--on' : ''}`}
+      className={`pill pill--${size}${tone}${selected ? ' pill--on' : ''}`}
       style={style}
       title={title ?? person.name}
       aria-pressed={onClick ? selected : undefined}

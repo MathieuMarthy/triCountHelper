@@ -222,13 +222,38 @@ describe('settle — ajustements', () => {
 });
 
 describe('settle — lignes non attribuées', () => {
-  it('les signale sans les répartir', () => {
-    const r = receiptOf([line('l1', 1000, [{ personId: 'p1' }]), line('l2', 500, [])]);
+  it('les partage à parts égales entre tous les participants', () => {
+    const r = receiptOf([line('l1', 900, [{ personId: 'p1' }]), line('l2', 600, [])]);
     const s = settle(r, people);
-    expect(s.unassignedLineIds).toEqual(['l2']);
-    expect(s.unassignedLinesCents).toBe(500);
-    expect(s.distributedTotalCents).toBe(1000);
+    expect(s.autoSplitLineIds).toEqual(['l2']);
+    expect(s.autoSplitLinesCents).toBe(600);
+    expect(s.unassignedLineIds).toEqual([]);
+    expect(s.unassignedLinesCents).toBe(0);
+    // 900 à p1, puis 600 partagés en trois.
+    expect(s.people.map((p) => p.totalCents)).toEqual([1100, 200, 200]);
+    expect(s.distributedTotalCents).toBe(1500);
     expect(s.subtotalCents).toBe(1500);
+  });
+
+  it('marque la part partagée d’office et compte les lignes solo', () => {
+    const r = receiptOf([line('l1', 900, [{ personId: 'p1' }]), line('l2', 600, [])]);
+    const s = settle(r, people);
+    const p1 = s.people[0] as NonNullable<(typeof s.people)[number]>;
+    expect(p1.soloLineCount).toBe(1);
+    expect(p1.sharedLineCount).toBe(1);
+    expect(p1.items.map((item) => [item.id, item.shareCount, item.auto])).toEqual([
+      ['l1', 1, false],
+      ['l2', 3, true],
+    ]);
+  });
+
+  it('laisse la ligne hors répartition quand il n’y a aucun participant', () => {
+    const r = receiptOf([line('l1', 500, [])]);
+    const s = settle(r, []);
+    expect(s.unassignedLineIds).toEqual(['l1']);
+    expect(s.unassignedLinesCents).toBe(500);
+    expect(s.autoSplitLineIds).toEqual([]);
+    expect(s.distributedTotalCents).toBe(0);
   });
 });
 

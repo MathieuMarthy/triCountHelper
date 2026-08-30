@@ -4,6 +4,7 @@ import { Button } from '../ui/Button';
 import { Banner } from '../ui/Banner';
 import { AmountInput } from '../ui/AmountInput';
 import { PersonPill } from '../ui/PersonPill';
+import { ShareIcon } from '../ui/ShareIcon';
 import { useAppStore } from '../store/useAppStore';
 import { settle, tipForPercent } from '../lib/compute';
 import { formatCents, formatPercent } from '../lib/money';
@@ -70,10 +71,18 @@ export function ResultsScreen({ receipt, onBack, onHome }: ResultsScreenProps) {
         settlement.unassignedLineIds.length > 0 ? (
           <Banner tone="warn">
             {settlement.unassignedLineIds.length} ligne
-            {settlement.unassignedLineIds.length > 1 ? 's' : ''} non attribuée
-            {settlement.unassignedLineIds.length > 1 ? 's' : ''} —{' '}
+            {settlement.unassignedLineIds.length > 1 ? 's' : ''} sans participant —{' '}
             <span className="num">{formatCents(settlement.unassignedLinesCents)}</span> hors
             répartition
+          </Banner>
+        ) : settlement.autoSplitLineIds.length > 0 ? (
+          <Banner>
+            {settlement.autoSplitLineIds.length} ligne
+            {settlement.autoSplitLineIds.length > 1 ? 's' : ''} non attribuée
+            {settlement.autoSplitLineIds.length > 1 ? 's' : ''} —{' '}
+            <span className="num">{formatCents(settlement.autoSplitLinesCents)}</span> partagé
+            {settlement.autoSplitLineIds.length > 1 ? 's' : ''} entre les{' '}
+            {people.length} participants
           </Banner>
         ) : null
       }
@@ -145,12 +154,34 @@ export function ResultsScreen({ receipt, onBack, onHome }: ResultsScreenProps) {
                   {person.lineCount} article{person.lineCount > 1 ? 's' : ''} ·{' '}
                   <span className="num">{formatPercent(person.ratio)}</span> du total
                 </span>
+                {person.soloLineCount > 0 ? (
+                  <span className="results__count">
+                    <ShareIcon count={1} decorative />
+                    {person.soloLineCount} seul{person.soloLineCount > 1 ? 's' : ''}
+                  </span>
+                ) : null}
+                {person.sharedLineCount > 0 ? (
+                  <span className="results__count">
+                    <ShareIcon count={2} decorative />
+                    {person.sharedLineCount} partagé{person.sharedLineCount > 1 ? 's' : ''}
+                  </span>
+                ) : null}
               </div>
               {open ? (
                 <ul className="results__detail">
                   {person.items.map((item, index) => (
                     <li key={`${item.id}-${index}`}>
-                      <span>{item.label || 'Sans libellé'}</span>
+                      <span className="results__item">
+                        {item.kind === 'line' ? (
+                          <ShareIcon count={item.shareCount} auto={item.auto} />
+                        ) : (
+                          <span className="shareIcon shareIcon--none" aria-hidden="true" />
+                        )}
+                        {item.label || 'Sans libellé'}
+                        {item.kind === 'line' && item.shareCount > 1 ? (
+                          <span className="results__shareCount num">÷{item.shareCount}</span>
+                        ) : null}
+                      </span>
                       <span className="num">{formatCents(item.amountCents)}</span>
                     </li>
                   ))}

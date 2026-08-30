@@ -1,4 +1,4 @@
-import { parseAmountToCents } from '../lib/money';
+import { parseAmountToCents, roundHalfUp } from '../lib/money';
 import {
   EMPTY_EXTRACTION,
   type ExtractedLine,
@@ -27,9 +27,26 @@ function asString(value: unknown): string | null {
   return null;
 }
 
+function toCents(amount: number): number | null {
+  if (!Number.isFinite(amount)) return null;
+  const cents = roundHalfUp(amount * 100);
+  return Number.isSafeInteger(cents) ? cents : null;
+}
+
+/* Le modèle répond en JSON : 3,33 peut y arriver sous la forme 3.3300000000000005,
+   et un montant à trois décimales doit s'arrondir au centime — le rejeter ferait
+   disparaître la ligne du ticket. La saisie manuelle, elle, reste stricte. */
 function asCents(value: unknown): number | null {
+  if (typeof value === 'number') return toCents(value);
+
   const text = asString(value);
-  return text === null ? null : parseAmountToCents(text);
+  if (text === null) return null;
+
+  const strict = parseAmountToCents(text);
+  if (strict !== null) return strict;
+
+  const loose = Number(text.replace(/[\s\u00a0\u202f$€]/g, '').replace(',', '.'));
+  return Number.isFinite(loose) ? toCents(loose) : null;
 }
 
 export function parseRatePercent(value: unknown): number | null {

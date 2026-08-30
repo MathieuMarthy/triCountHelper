@@ -29,7 +29,7 @@ export function AmountInput({
     const cents = parseAmountToCents(text);
     if (cents === null) {
       if (text.trim() === '') {
-        onChange(null);
+        if (valueCents !== null) onChange(null);
         setDraft('');
         return;
       }
@@ -37,8 +37,10 @@ export function AmountInput({
       return;
     }
     const next = allowNegative ? cents : Math.abs(cents);
-    onChange(next);
     setDraft(centsToInput(next));
+    /* Un aller-retour dans le champ ne doit rien réécrire : republier une valeur
+       inchangée relancerait les calculs dérivés, qui perdent un centime au passage. */
+    if (next !== valueCents) onChange(next);
   };
 
   return (
@@ -56,7 +58,9 @@ export function AmountInput({
         const text = event.target.value;
         setDraft(text);
         const cents = parseAmountToCents(text);
-        if (cents !== null) onChange(allowNegative ? cents : Math.abs(cents));
+        if (cents === null) return;
+        const next = allowNegative ? cents : Math.abs(cents);
+        if (next !== valueCents) onChange(next);
       }}
       onBlur={(event) => {
         focused.current = false;

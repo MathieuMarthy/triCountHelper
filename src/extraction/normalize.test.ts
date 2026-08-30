@@ -192,3 +192,36 @@ describe('parseRatePercent', () => {
     expect(parseRatePercent(input)).toBeNull();
   });
 });
+
+describe('montants au centime', () => {
+  const lineOf = (raw: object) =>
+    normalizeExtraction({ lines: [{ label: 'Article', quantity: 1, ...raw }] });
+
+  it('accepte les nombres JSON autant que les chaînes', () => {
+    expect(lineOf({ total: 10.5 }).lines[0]?.totalCents).toBe(1050);
+    expect(lineOf({ total: '10,50' }).lines[0]?.totalCents).toBe(1050);
+  });
+
+  it('ne perd pas une ligne sur un artefact de virgule flottante', () => {
+    // Ce qu'un 3,33 devient parfois une fois passé par du JSON.
+    const result = lineOf({ total: 3.3300000000000005 });
+    expect(result.lines[0]?.totalCents).toBe(333);
+    expect(result.discarded).toEqual([]);
+  });
+
+  it('arrondit au centime au lieu de jeter la ligne', () => {
+    expect(lineOf({ total: 10.999 }).lines[0]?.totalCents).toBe(1100);
+    expect(lineOf({ total: '10,994' }).lines[0]?.totalCents).toBe(1099);
+  });
+
+  it('écarte toujours ce qui n’est pas un montant', () => {
+    expect(lineOf({ total: 'gratuit' }).lines).toHaveLength(0);
+    expect(lineOf({ total: Number.NaN }).lines).toHaveLength(0);
+  });
+
+  it('applique la même règle au total et au sous-total lus', () => {
+    const result = normalizeExtraction({ subtotal: 16.949999999999999, total: 19.2 });
+    expect(result.statedSubtotalCents).toBe(1695);
+    expect(result.statedTotalCents).toBe(1920);
+  });
+});

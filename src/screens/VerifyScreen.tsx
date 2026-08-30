@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Screen } from '../ui/Screen';
 import { Button } from '../ui/Button';
 import { Banner } from '../ui/Banner';
@@ -6,7 +6,7 @@ import { AmountInput } from '../ui/AmountInput';
 import { PhotoSheet } from '../ui/PhotoSheet';
 import { useReceiptImage } from '../hooks/useReceiptImage';
 import { useAppStore } from '../store/useAppStore';
-import { formatCents } from '../lib/money';
+import { formatCents, roundHalfUp } from '../lib/money';
 import { adjustmentsTotal, subtotalOf, taxesTotalOf } from '../lib/compute';
 import { uid } from '../lib/id';
 import { regimeByCode, type Receipt, type ReceiptLine, type ReceiptTax } from '../types';
@@ -18,6 +18,49 @@ type VerifyScreenProps = {
 };
 
 const LOW_CONFIDENCE = 70;
+
+type QuantityInputProps = {
+  value: number;
+  onChange: (quantity: number) => void;
+};
+
+/* Vider le champ pour retaper une quantité ne doit pas faire passer la ligne par
+   « 1 unité » : ce détour rebaserait le prix unitaire et emporterait des centimes.
+   Le champ garde donc sa saisie en cours et ne publie que les quantités valides. */
+function QuantityInput({ value, onChange }: QuantityInputProps) {
+  const [draft, setDraft] = useState(() => String(value));
+  const focused = useRef(false);
+
+  useEffect(() => {
+    if (!focused.current) setDraft(String(value));
+  }, [value]);
+
+  return (
+    <input
+      type="number"
+      min={1}
+      max={999}
+      className="lineRow__qty num"
+      value={draft}
+      aria-label="Quantité"
+      onFocus={(event) => {
+        focused.current = true;
+        event.currentTarget.select();
+      }}
+      onChange={(event) => {
+        const text = event.target.value;
+        setDraft(text);
+        const parsed = Number(text);
+        if (text.trim() === '' || !Number.isFinite(parsed) || parsed < 1) return;
+        onChange(Math.floor(parsed));
+      }}
+      onBlur={() => {
+        focused.current = false;
+        setDraft(String(value));
+      }}
+    />
+  );
+}
 
 function emptyLine(): ReceiptLine {
   return {
@@ -57,9 +100,15 @@ export function VerifyScreen({ receipt, onBack, onDone }: VerifyScreenProps) {
 
   const setQuantity = (line: ReceiptLine, quantity: number) => {
     const safe = Number.isFinite(quantity) && quantity > 0 ? Math.floor(quantity) : 1;
+    if (safe === line.quantity) return;
+    /* Le prix unitaire affiché est un arrondi : 3 bières à 10,00 $ s'affichent
+       3 × 3,33. Repartir de lui ferait tomber la ligne à 9,99 $. On remet donc à
+       l'échelle le total réel, seul montant qui figure sur le ticket. */
+    const totalCents = roundHalfUp((line.totalCents / Math.max(1, line.quantity)) * safe);
     patchLine(line.id, {
       quantity: safe,
-      totalCents: line.unitPriceCents * safe,
+      totalCents,
+      unitPriceCents: roundHalfUp(totalCents / safe),
       isManual: true,
     });
   };
@@ -75,7 +124,8 @@ export function VerifyScreen({ receipt, onBack, onDone }: VerifyScreenProps) {
   const setTotal = (line: ReceiptLine, totalCents: number) => {
     patchLine(line.id, {
       totalCents,
-      unitPriceCents: Math.round(totalCents / Math.max(1, line.quantity)),
+      // Le total saisi fait foi ; le prix unitaire n'en est que l'affichage arrondi.
+      unitPriceCents: roundHalfUp(totalCents / Math.max(1, line.quantity)),
       isManual: true,
     });
   };
@@ -272,14 +322,9 @@ export function VerifyScreen({ receipt, onBack, onDone }: VerifyScreenProps) {
               </button>
             </div>
             <div className="lineRow__bottom">
-              <input
-                type="number"
-                min={1}
-                max={999}
-                className="lineRow__qty num"
+              <QuantityInput
                 value={line.quantity}
-                aria-label="Quantité"
-                onChange={(event) => setQuantity(line, Number(event.target.value))}
+                onChange={(quantity) => setQuantity(line, quantity)}
               />
               <span className="lineRow__times" aria-hidden="true">×</span>
               <AmountInput

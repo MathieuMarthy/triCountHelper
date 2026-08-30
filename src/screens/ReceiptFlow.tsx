@@ -29,7 +29,14 @@ export function ReceiptFlow({ receiptId, step }: ReceiptFlowProps) {
 
   switch (step) {
     case 'capture':
-      return <CaptureScreen receipt={receipt} onBack={goHome} onDone={() => goTo('processing')} />;
+      return (
+        <CaptureScreen
+          receipt={receipt}
+          onBack={goHome}
+          onDone={() => goTo('processing')}
+          onSkip={receipt.lines.length > 0 ? () => goTo('verify') : undefined}
+        />
+      );
     case 'processing':
       return (
         <ProcessingScreen
