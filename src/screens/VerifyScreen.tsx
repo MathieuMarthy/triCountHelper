@@ -66,6 +66,7 @@ function emptyLine(): ReceiptLine {
   return {
     id: uid(),
     label: '',
+    description: null,
     quantity: 1,
     unitPriceCents: 0,
     totalCents: 0,
@@ -304,14 +305,26 @@ export function VerifyScreen({ receipt, onBack, onDone }: VerifyScreenProps) {
               ) : (
                 <span className="dot dot--empty" aria-hidden="true" />
               )}
-              <input
-                type="text"
-                className="lineRow__label"
-                value={line.label}
-                placeholder="Libellé"
-                aria-label="Libellé de la ligne"
-                onChange={(event) => patchLine(line.id, { label: event.target.value })}
-              />
+              <div className="lineRow__labels">
+                <input
+                  type="text"
+                  className="lineRow__label"
+                  value={line.label}
+                  placeholder="Libellé imprimé"
+                  aria-label="Libellé de la ligne"
+                  onChange={(event) => patchLine(line.id, { label: event.target.value })}
+                />
+                <input
+                  type="text"
+                  className="lineRow__sublabel"
+                  value={line.description ?? ''}
+                  placeholder="Explication / produit décodé…"
+                  aria-label={`Explication de ${line.label || 'la ligne'}`}
+                  onChange={(event) =>
+                    patchLine(line.id, { description: event.target.value || null })
+                  }
+                />
+              </div>
               <button
                 type="button"
                 className="iconButton iconButton--quiet"

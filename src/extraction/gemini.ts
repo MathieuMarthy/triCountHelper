@@ -25,6 +25,8 @@ const PROMPT = `Tu lis un ticket de caisse canadien photographié. Rends son con
 ━━ EXHAUSTIVITÉ — priorité absolue ━━
 Parcours le ticket du haut vers le bas sans sauter une seule ligne d'article.
 - Une entrée dans "lines" par ligne d'article, dans l'ordre exact.
+- "label" : libellé exact tel qu'imprimé sur le ticket (abréviations comprises).
+- "description" : explication claire et intelligible du produit en français (ex. décoder "CR GCE VAN" en "Crème glacée vanille", "PQ CHARMIN 12" en "Papier hygiénique Charmin 12 rouleaux", "POM MCINT SAC" en "Sac de pommes McIntosh", "CSHG CANETTE" en "Consigne de canette"). Si le nom est déjà clair, reformule-le simplement de manière concise sans inventer d'informations.
 - Si une ligne est floue ou partiellement illisible, donne ta meilleure lecture et mets "uncertain": true. Ne supprime jamais une ligne sous prétexte d'illisibilité.
 - Avant de répondre, vérifie que la somme de tous tes "total" correspond au sous-total imprimé. S'il y a un écart, cherche les lignes manquantes.
 
@@ -73,6 +75,7 @@ const SCHEMA = {
         type: 'OBJECT',
         properties: {
           label: { type: 'STRING' },
+          description: { type: 'STRING' },
           quantity: { type: 'NUMBER' },
           unitPrice: { type: 'STRING' },
           total: { type: 'STRING' },
@@ -164,7 +167,13 @@ function supportsReceiptImages(model: ModelLike): boolean {
 }
 
 function isApiError(error: unknown): error is ApiError {
-  return error instanceof ApiError;
+  return (
+    error instanceof ApiError ||
+    (typeof error === 'object' &&
+      error !== null &&
+      'status' in error &&
+      typeof (error as { status: unknown }).status === 'number')
+  );
 }
 
 class ExtractionTimeoutError extends Error {
@@ -216,6 +225,10 @@ export type ExtractOptions = {
 type ModelCaps = { useThinkingConfig: boolean; structured: boolean };
 const modelCapsCache = new Map<string, ModelCaps>();
 
+export function clearModelCapsCache(): void {
+  modelCapsCache.clear();
+}
+
 const CAPS_PROBE_ORDER: ModelCaps[] = [
   { useThinkingConfig: false, structured: true },
   { useThinkingConfig: false, structured: false },
@@ -263,7 +276,7 @@ export async function extractWithGemini(
           contents: buildContents(data, mimeType),
           config: {
             temperature: 0,
-            maxOutputTokens: 2048,
+            maxOutputTokens: 4096,
             ...(caps.structured
               ? {
                   responseMimeType: 'application/json',
@@ -296,16 +309,31 @@ export async function extractWithGemini(
   }
 
   function isRetryable400(error: unknown): boolean {
-    return isApiError(error) && error.status === 400;
+    if (!isApiError(error) || error.status !== 400) return false;
+    const msg = (error.message || '').toLowerCase();
+    if (msg.includes('api key') || msg.includes('api_key') || msg.includes('apikey')) {
+      return false;
+    }
+    return true;
   }
 
-  let text: string;
+  let text: string | undefined;
   try {
     const cached = modelCapsCache.get(model);
     if (cached) {
       logGemini('request:start', { model, caps: cached, source: 'cache' });
-      text = await attempt(cached);
-    } else {
+      try {
+        text = await attempt(cached);
+      } catch (err) {
+        if (isRetryable400(err)) {
+          logGemini('request:cache:invalidated', { model, failedCaps: cached });
+          modelCapsCache.delete(model);
+        } else {
+          throw err;
+        }
+      }
+    }
+    if (text === undefined) {
       logGemini('request:start', { model, source: 'probe' });
       let lastError: unknown;
       let succeeded = false;

@@ -14,6 +14,7 @@ export type PersonShareItem = {
   kind: 'line' | 'tax' | 'adjustment' | 'tip';
   id: string;
   label: string;
+  description?: string | null;
   totalCents: number;
   amountCents: number;
   /** Nombre de personnes qui se partagent cette part (1 = seule). */
@@ -174,6 +175,7 @@ export function settle(input: SettleInput, people: readonly Person[]): Settlemen
         kind: 'line',
         id: line.id,
         label: line.label,
+        description: line.description ?? null,
         totalCents: line.totalCents,
         amountCents: amount,
         shareCount,

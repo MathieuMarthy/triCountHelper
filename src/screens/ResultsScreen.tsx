@@ -177,7 +177,12 @@ export function ResultsScreen({ receipt, onBack, onHome }: ResultsScreenProps) {
                         ) : (
                           <span className="shareIcon shareIcon--none" aria-hidden="true" />
                         )}
-                        {item.label || 'Sans libellé'}
+                        <span className="results__item-text">
+                          {item.description?.trim() || item.label || 'Sans libellé'}
+                          {item.description && item.description.trim() !== item.label.trim() ? (
+                            <span className="results__item-code muted"> ({item.label})</span>
+                          ) : null}
+                        </span>
                         {item.kind === 'line' && item.shareCount > 1 ? (
                           <span className="results__shareCount num">÷{item.shareCount}</span>
                         ) : null}

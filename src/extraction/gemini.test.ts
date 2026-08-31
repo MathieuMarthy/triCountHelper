@@ -33,7 +33,7 @@ vi.mock('@google/genai', () => {
 });
 
 import { ApiError, GoogleGenAI } from '@google/genai';
-import { ExtractionError, extractWithGemini, listModels } from './gemini';
+import { ExtractionError, clearModelCapsCache, extractWithGemini, listModels } from './gemini';
 
 function geminiSays(payload: unknown) {
   return { text: JSON.stringify(payload) };
@@ -56,6 +56,7 @@ afterEach(() => {
   geminiMocks.generateContent.mockReset();
   geminiMocks.listModels.mockReset();
   geminiMocks.googleGenAI.mockClear();
+  clearModelCapsCache();
 });
 
 describe('extractWithGemini', () => {
@@ -80,7 +81,6 @@ describe('extractWithGemini', () => {
     expect(params.model).toBe('gemini-test');
     expect(params.config.temperature).toBe(0);
     expect(params.config.responseMimeType).toBe('application/json');
-    expect(params.config.thinkingConfig).toEqual({ thinkingBudget: 0 });
     expect(params.config.responseJsonSchema.required).toContain('lines');
     const content = params.contents[0] as unknown as {
       role?: string;
@@ -169,9 +169,9 @@ describe('extractWithGemini', () => {
 });
 
 describe('extractWithGemini — robustesse de l’appel', () => {
-  it('réessaie sans thinkingConfig quand le modèle ne connaît pas ce champ', async () => {
+  it('réessaie sans schéma structuré quand le modèle rejette ce mode', async () => {
     geminiMocks.generateContent
-      .mockRejectedValueOnce(new ApiError({ message: 'Unknown name "thinkingConfig"', status: 400 }))
+      .mockRejectedValueOnce(new ApiError({ message: 'Request contains an invalid argument.', status: 400 }))
       .mockResolvedValueOnce(geminiSays({ lines: [{ label: 'A', total: '1,00' }] }));
 
     const result = await extractWithGemini(image, { apiKey: 'k' });
@@ -179,13 +179,13 @@ describe('extractWithGemini — robustesse de l’appel', () => {
     expect(geminiMocks.generateContent).toHaveBeenCalledTimes(2);
 
     const first = geminiMocks.generateContent.mock.calls[0]?.[0] as {
-      config: { thinkingConfig?: { thinkingBudget: number } };
+      config: { responseJsonSchema?: unknown };
     };
     const second = geminiMocks.generateContent.mock.calls[1]?.[0] as {
-      config: { thinkingConfig?: { thinkingBudget: number } };
+      config: { responseJsonSchema?: unknown };
     };
-    expect(first.config.thinkingConfig).toBeDefined();
-    expect(second.config.thinkingConfig).toBeUndefined();
+    expect(first.config.responseJsonSchema).toBeDefined();
+    expect(second.config.responseJsonSchema).toBeUndefined();
   });
 
   it('ne réessaie pas sur un 400 qui parle d’autre chose', async () => {

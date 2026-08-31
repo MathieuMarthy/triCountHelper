@@ -193,10 +193,15 @@ export function AssignScreen({ receipt, onBack, onDone }: AssignScreenProps) {
                 onApply={() => applyToLine(line)}
                 onEditShares={() => setSharesFor(line.id)}
               >
-                <span className="assignRow__label">
-                  {line.label || 'Sans libellé'}
-                  {line.quantity > 1 ? <span className="muted"> ×{line.quantity}</span> : null}
-                </span>
+                <div className="assignRow__main">
+                  <span className="assignRow__title">
+                    {line.description?.trim() || line.label || 'Sans libellé'}
+                    {line.quantity > 1 ? <span className="muted"> ×{line.quantity}</span> : null}
+                  </span>
+                  {line.description && line.description.trim() !== line.label.trim() ? (
+                    <span className="assignRow__code">{line.label}</span>
+                  ) : null}
+                </div>
                 <span className="assignRow__pills">
                   {(line.assignments.length === 0 ? people : assigned).map((person) => (
                     <PersonPill
@@ -366,7 +371,7 @@ function SharesSheet({ line, onClose, onChange }: SharesSheetProps) {
   return (
     <Sheet
       open
-      title={line.label || 'Ligne'}
+      title={line.description?.trim() || line.label || 'Ligne'}
       onClose={onClose}
       footer={
         <Button variant="primary" full onClick={onClose}>
@@ -375,6 +380,9 @@ function SharesSheet({ line, onClose, onChange }: SharesSheetProps) {
       }
     >
       <p className="muted">
+        {line.description && line.description.trim() !== line.label.trim() ? (
+          <span className="shares__code">{line.label} · </span>
+        ) : null}
         Montant de la ligne : <span className="num">{formatCents(line.totalCents)}</span>
       </p>
       <ul className="shares">
