@@ -126,6 +126,7 @@ function normalizeLine(raw: unknown): ExtractedLine | { discarded: string } {
   }
   const record = raw as Record<string, unknown>;
   const label = asString(record.label);
+  const description = asString(record.description);
   const totalCents = asCents(record.total);
 
   if (totalCents === null) {
@@ -141,6 +142,7 @@ function normalizeLine(raw: unknown): ExtractedLine | { discarded: string } {
 
   return {
     label: label ?? 'Article',
+    description: description ?? null,
     quantity,
     unitPriceCents,
     totalCents,

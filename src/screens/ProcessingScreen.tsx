@@ -44,6 +44,7 @@ export function ProcessingScreen({ receipt, onBack, onDone }: ProcessingScreenPr
       const lines: ReceiptLine[] = result.lines.map((line) => ({
         id: uid(),
         label: line.label,
+        description: line.description ?? null,
         quantity: line.quantity,
         unitPriceCents: line.unitPriceCents,
         totalCents: line.totalCents,

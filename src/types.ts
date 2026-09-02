@@ -55,6 +55,7 @@ export type Assignment = {
 export type ReceiptLine = {
   id: string;
   label: string;
+  description?: string | null;
   quantity: number;
   unitPriceCents: number;
   totalCents: number;

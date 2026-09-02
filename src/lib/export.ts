@@ -4,6 +4,11 @@ import type { Person, Receipt } from '../types';
 
 export function formatFrenchDate(iso: string | null): string | null {
   if (!iso) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (match) {
+    const [, year, month, day] = match;
+    return `${day}/${month}/${year}`;
+  }
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return null;
   return new Intl.DateTimeFormat('fr-FR', {
@@ -55,7 +60,8 @@ export function buildDetailedText(
     if (person.totalCents === 0 && person.lineCount === 0) continue;
     out.push(`${nameOf(person.personId)} : ${formatCentsPlain(person.totalCents)} $`);
     for (const item of person.items) {
-      out.push(`  ${item.label} — ${formatCentsPlain(item.amountCents)} $`);
+      const itemTitle = item.description?.trim() || item.label;
+      out.push(`  ${itemTitle} — ${formatCentsPlain(item.amountCents)} $`);
     }
     out.push('');
   }

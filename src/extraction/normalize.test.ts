@@ -51,6 +51,17 @@ describe('normalizeExtraction — cas nominal', () => {
     expect(result.purchaseDate).toBe('2026-03-14');
   });
 
+  it('lit la description décodée si fournie et retourne null si omise', () => {
+    const withDesc = normalizeExtraction({
+      lines: [
+        { label: 'CR GCE VAN', description: 'Crème glacée vanille', total: '4,99' },
+        { label: 'POM MCINT', total: '2,99' },
+      ],
+    });
+    expect(withDesc.lines[0]?.description).toBe('Crème glacée vanille');
+    expect(withDesc.lines[1]?.description).toBeNull();
+  });
+
   it('sous-total + taxes retombe sur le total imprimé', () => {
     const result = normalizeExtraction(raw);
     const taxes = result.taxes.reduce((sum, tax) => sum + tax.amountCents, 0);
