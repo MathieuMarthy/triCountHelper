@@ -1,0 +1,97 @@
+name: Build iOS
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'ios/**'
+      - 'assets/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'capacitor.config.ts'
+      - 'vite.config.ts'
+      - 'tsconfig*.json'
+      - '.github/workflows/ios-build.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'ios/**'
+      - 'assets/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'capacitor.config.ts'
+      - 'vite.config.ts'
+      - 'tsconfig*.json'
+      - '.github/workflows/ios-build.yml'
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: 'Build Configuration (Debug or Release)'
+        required: true
+        default: 'Debug'
+        type: choice
+        options:
+          - Debug
+          - Release
+
+jobs:
+  build-ios:
+    name: Build iOS App
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Verify TypeScript & Run Unit Tests
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Build Web Assets (Vite)
+        run: npm run build
+
+      - name: Sync Capacitor iOS
+        run: npx cap sync ios
+
+      - name: Build iOS App (Simulator / Unsigned)
+        run: |
+          CONFIG="${{ inputs.configuration || 'Debug' }}"
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration "$CONFIG" \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            clean build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Archive Simulator App
+        run: |
+          CONFIG="${{ inputs.configuration || 'Debug' }}"
+          cd "build/Build/Products/${CONFIG}-iphonesimulator"
+          zip -r "SplitTicket-iOS-Simulator.zip" App.app
+
+      - name: Upload iOS App Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SplitTicket-iOS-Simulator
+          path: build/Build/Products/*-iphonesimulator/SplitTicket-iOS-Simulator.zip
+          retention-days: 14
