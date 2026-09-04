@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Screen } from '../ui/Screen';
 import { Button } from '../ui/Button';
 import { Banner } from '../ui/Banner';
@@ -8,7 +8,14 @@ import { ShareIcon } from '../ui/ShareIcon';
 import { useAppStore } from '../store/useAppStore';
 import { settle, tipForPercent } from '../lib/compute';
 import { formatCents, formatPercent } from '../lib/money';
-import { buildDetailedText, buildSummaryText, copyText, personAmountText } from '../lib/export';
+import {
+  buildDetailedText,
+  buildSummaryText,
+  canShare,
+  copyText,
+  personAmountText,
+  shareText,
+} from '../lib/export';
 import { personById } from '../lib/people';
 import { TricountPanel } from '../integrations/tricount/TricountPanel';
 import type { Receipt } from '../types';
@@ -48,6 +55,12 @@ export function ResultsScreen({ receipt, onBack, onHome }: ResultsScreenProps) {
     (person) => person.totalCents !== 0 || person.lineCount > 0,
   );
 
+  const [shareable, setShareable] = useState(false);
+
+  useEffect(() => {
+    void canShare().then(setShareable);
+  }, []);
+
   const flash = (key: string) => {
     setCopied(key);
     setTimeout(() => setCopied((current) => (current === key ? null : current)), 1600);
@@ -56,6 +69,15 @@ export function ResultsScreen({ receipt, onBack, onHome }: ResultsScreenProps) {
   const copySummary = async () => {
     const ok = await copyText(buildSummaryText(receipt, settlement, people));
     if (ok) flash('summary');
+  };
+
+  const shareSummary = async () => {
+    const title = `SplitTicket — ${receipt.merchant || 'Ticket'}`;
+    const text = buildSummaryText(receipt, settlement, people);
+    const ok = await shareText(title, text);
+    if (!ok) {
+      await copySummary();
+    }
   };
 
   const copyDetail = async () => {
@@ -88,9 +110,20 @@ export function ResultsScreen({ receipt, onBack, onHome }: ResultsScreenProps) {
       }
       footer={
         <>
-          <Button variant="primary" full onClick={() => void copySummary()}>
-            {copied === 'summary' ? 'Copié ✓' : 'Copier le récapitulatif'}
-          </Button>
+          {shareable ? (
+            <div className="row row--gap">
+              <Button variant="primary" full onClick={() => void shareSummary()}>
+                Partager
+              </Button>
+              <Button full onClick={() => void copySummary()}>
+                {copied === 'summary' ? 'Copié ✓' : 'Copier le récapitulatif'}
+              </Button>
+            </div>
+          ) : (
+            <Button variant="primary" full onClick={() => void copySummary()}>
+              {copied === 'summary' ? 'Copié ✓' : 'Copier le récapitulatif'}
+            </Button>
+          )}
           <div className="row row--gap">
             <Button full onClick={() => void copyDetail()}>
               {copied === 'detail' ? 'Copié ✓' : 'Copier le détail'}

@@ -96,3 +96,28 @@ export async function copyText(text: string): Promise<boolean> {
     return false;
   }
 }
+
+export async function canShare(): Promise<boolean> {
+  try {
+    const { Share } = await import('@capacitor/share');
+    const res = await Share.canShare();
+    return Boolean(res.value);
+  } catch {
+    return typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+  }
+}
+
+export async function shareText(title: string, text: string): Promise<boolean> {
+  try {
+    const { Share } = await import('@capacitor/share');
+    await Share.share({
+      title,
+      text,
+      dialogTitle: title,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAppStore } from './store/useAppStore';
 import { registerServiceWorker, subscribeInstall, subscribeUpdates, promptInstall, refreshApp } from './pwa';
+import { useHardwareBackButton } from './hooks/useHardwareBackButton';
 import { HomeScreen } from './screens/HomeScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { ReceiptFlow } from './screens/ReceiptFlow';
@@ -64,6 +65,7 @@ export default function App() {
   const route = useAppStore((s) => s.route);
   const init = useAppStore((s) => s.init);
   useTheme();
+  useHardwareBackButton();
 
   useEffect(() => {
     void init();

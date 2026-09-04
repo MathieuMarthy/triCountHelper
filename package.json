@@ -9,9 +9,17 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "assets:generate": "npx @capacitor/assets generate --android",
+    "build:apk": "npm run build && npx cap sync android && ./android/gradlew -p android assembleDebug",
+    "build:apk:release": "npm run build && npx cap sync android && ./android/gradlew -p android assembleRelease",
+    "build:bundle": "npm run build && npx cap sync android && ./android/gradlew -p android bundleRelease"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.1",
+    "@capacitor/share": "^8.0.1",
     "@google/genai": "^2.21.0",
     "idb": "^8.0.3",
     "react": "^18.3.1",
@@ -19,6 +27,7 @@
     "zustand": "^4.5.7"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",

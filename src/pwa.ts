@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+
 export type UpdateState = {
   needRefresh: boolean;
   offlineReady: boolean;
@@ -25,6 +27,7 @@ export function refreshApp(): void {
 }
 
 export async function registerServiceWorker(): Promise<void> {
+  if (Capacitor.isNativePlatform()) return;
   if (!('serviceWorker' in navigator)) return;
   try {
     const { registerSW } = await import('virtual:pwa-register');

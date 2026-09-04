@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SplitTicket</string>
+    <string name="title_activity_main">SplitTicket</string>
+    <string name="package_name">com.chocobytes.splitticket</string>
+    <string name="custom_url_scheme">com.chocobytes.splitticket</string>
+</resources>
